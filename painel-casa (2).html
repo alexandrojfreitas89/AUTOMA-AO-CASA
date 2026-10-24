@@ -1,0 +1,473 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Painel da casa</title>
+<link href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@75..125,400..800&display=swap" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/mqtt@5.10.1/dist/mqtt.min.js"></script>
+<style>
+:root{--bg:#e6ebee;--card:#f3f6f7;--ink:#17262e;--mut:#5b6c76;--line:#c3cdd2;--on:#178a49;--off:#c93636;--warn:#b7791f;--ac:#0b5cad;color-scheme:light}
+[data-tema=dark]{--bg:#0f1519;--card:#19232a;--ink:#e6edf0;--mut:#8da0aa;--line:#2c3b44;--warn:#e0a84a;--ac:#2f7fd0;color-scheme:dark}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font:400 1rem/1.4 'Archivo',system-ui,sans-serif}
+.banner{position:sticky;top:0;z-index:5;background:var(--warn);color:#1b1300;font-weight:700;font-size:.85rem;text-align:center;padding:6px 10px;padding-top:calc(6px + env(safe-area-inset-top,0px))}
+.banner[hidden]{display:none}
+nav{position:fixed;bottom:0;left:0;right:0;z-index:4;display:flex;background:var(--card);border-top:1px solid var(--line);padding-bottom:env(safe-area-inset-bottom,0px)}
+nav button{flex:1;font:inherit;font-size:.75rem;font-weight:600;color:var(--mut);background:none;border:0;border-top:3px solid transparent;padding:12px 2px;cursor:pointer}
+nav button[aria-current=page]{color:var(--ink);border-top-color:var(--ac)}
+header{display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;padding:16px 16px 0;max-width:980px;margin:0 auto}
+h1{margin:0;font-size:1.6rem;font-weight:700;font-stretch:85%}
+.meta{display:flex;align-items:center;gap:10px;font-size:.85rem;color:var(--mut)}
+.chip{border:1px solid var(--line);background:var(--card);border-radius:99px;padding:4px 10px}
+.tema{font:inherit;font-size:.85rem;color:var(--ink);background:none;border:1px solid var(--line);border-radius:6px;padding:4px 10px;cursor:pointer}
+main{max-width:980px;margin:0 auto;padding:16px 16px 96px;display:flex;flex-direction:column;gap:18px}
+h2{margin:0 0 8px;font-size:1.05rem}
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(270px,1fr));gap:14px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:14px;display:flex;flex-direction:column;gap:10px}
+.top{display:flex;align-items:center;gap:10px}.nm{flex:1;display:flex;flex-direction:column}.nm small{color:var(--mut)}
+.st{font-size:.85rem;font-weight:600}
+.led{width:13px;height:13px;border-radius:50%;flex:none;background:var(--mut)}
+.led[data-s=on]{background:var(--on);box-shadow:0 0 0 4px color-mix(in srgb,var(--on) 25%,transparent)}
+.led[data-s=off]{background:var(--off)}
+.led[data-s=unavailable]{background:transparent;border:2px dashed var(--warn)}
+.led[data-s=unknown]{background:transparent;border:3px solid var(--mut)}
+.st[data-s=on]{color:var(--on)}.st[data-s=off]{color:var(--off)}.st[data-s=unavailable]{color:var(--warn)}
+.tag{font-size:.78rem;color:var(--mut)}
+.btns{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.b{font:inherit;font-weight:800;font-size:.95rem;border:0;border-radius:8px;padding:12px 8px;color:#fff;cursor:pointer;box-shadow:0 3px 0 rgba(0,0,0,.25)}
+.b.on{background:var(--on)}.b.off{background:var(--off)}.b.sec{background:var(--ac)}
+.b:active:not(:disabled){transform:translateY(2px);box-shadow:0 1px 0 rgba(0,0,0,.25)}
+.b:disabled,select:disabled,input:disabled{opacity:.45;cursor:not-allowed}
+.b:focus-visible,nav button:focus-visible,select:focus-visible,.tema:focus-visible{outline:3px solid var(--ac);outline-offset:2px}
+.ctl{display:flex;align-items:center;justify-content:space-between;gap:10px;font-size:.9rem}
+.ctl select,.ctl input[type=color]{font:inherit;color:var(--ink);background:var(--bg);border:1px solid var(--line);border-radius:6px;padding:6px}
+.ctl input[type=range]{flex:1}
+.temp{display:flex;align-items:center;gap:10px;font-weight:700}.temp .b{padding:6px 14px;box-shadow:none}
+.msg{font-size:.82rem;min-height:1.1em;color:var(--mut)}.msg[data-k=ok]{color:var(--on)}.msg[data-k=bad]{color:var(--off)}
+.stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:10px}
+.stat{display:flex;align-items:center;gap:10px;background:var(--card);border:1px solid var(--line);border-radius:10px;padding:12px}
+.stat b{font-size:1.5rem}
+.row{display:flex;align-items:center;gap:10px;padding:9px 0;border-top:1px solid var(--line)}.row:first-child{border-top:0}
+.row .n{flex:1}.row .b{padding:7px 12px;font-size:.8rem;box-shadow:none}
+.cenas{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:10px}
+.cenas .b{padding:16px 8px;font-size:.9rem;background:var(--ink);color:var(--bg)}
+.cenas .b.perigo{background:var(--off);color:#fff}
+.aviso{border:1px solid var(--warn);border-left-width:5px;border-radius:8px;padding:10px 12px;background:var(--card);font-size:.9rem}
+.hist li{display:flex;gap:10px;padding:7px 0;border-top:1px solid var(--line);font-size:.88rem}.hist li:first-child{border-top:0}
+.hist time{color:var(--mut);flex:none}.hist li[data-k=bad]{color:var(--off)}
+ul{list-style:none;margin:0;padding:0}
+dialog{border:1px solid var(--line);border-radius:12px;background:var(--card);color:var(--ink);max-width:340px}
+dialog::backdrop{background:rgba(0,0,0,.5)}
+@media(min-width:820px){
+  nav{top:0;bottom:auto;right:auto;width:190px;flex-direction:column;border-top:0;border-right:1px solid var(--line);padding-top:56px}
+  nav button{text-align:left;font-size:.95rem;padding:14px 18px;border-top:0;border-left:4px solid transparent}
+  nav button[aria-current=page]{border-left-color:var(--ac)}
+  header,main{margin-left:190px;max-width:none}
+  main{padding-bottom:40px}
+}
+@media(prefers-reduced-motion:reduce){*{transition:none!important}}
+
+form.cfg{display:flex;flex-direction:column;gap:12px}form.cfg label{display:grid;gap:4px;font-size:.85rem;color:var(--mut)}form.cfg input{font:inherit;color:var(--ink);background:var(--bg);border:1px solid var(--line);border-radius:6px;padding:10px;width:100%}form.cfg input:focus-visible{outline:2px solid var(--ac)}
+.leit{display:grid;grid-template-columns:1fr 1fr;gap:10px}.leit div{background:var(--bg);border-radius:8px;padding:10px}.leit b{display:block;font-size:1.6rem}.leit small{color:var(--mut)}
+</style>
+</head>
+<body>
+<div class="banner" id="banner">MODO SIMULAÇÃO: nenhum aparelho real está sendo controlado</div>
+<nav id="nav" aria-label="Seções">
+  <button data-v="inicio">Início</button>
+  <button data-v="ar">Clima</button>
+  <button data-v="luzes">Luzes</button>
+  <button data-v="escritorio">Escritório</button>
+  <button data-v="garagem">Garagem</button>
+  <button data-v="sistema">Sistema</button>
+</nav>
+<header>
+  <h1 id="tit"></h1>
+  <div class="meta"><span id="relogio"></span><span class="chip" id="conn"></span><button class="tema" id="tema" aria-label="Alternar tema claro e escuro">Tema</button></div>
+</header>
+<main id="main"></main>
+<dialog id="dlg"><form method="dialog"><p id="dlgTxt"></p><div class="btns"><button class="b sec" value="cancel">Cancelar</button><button class="b off" value="ok">Confirmar</button></div></form></dialog>
+<script>
+/* Mapeamento dos dispositivos. Na Etapa 2, troque cada "entity" pelo entity_id real do Home Assistant
+   e remova demo:true. Todos os identificadores abaixo são DEMONSTRATIVOS. */
+window.CASA = {
+  dispositivos: [
+    { id:'ar_sala',    tipo:'ar',  nome:'Ar-condicionado', comodo:'Sala',   entity:'climate.demo_ar_sala',   demo:true, presumido:true },
+    { id:'ar_quarto',  tipo:'ar',  nome:'Ar-condicionado', comodo:'Quarto', entity:'climate.demo_ar_quarto', demo:true, presumido:true },
+    { id:'luz_sala',   tipo:'luz', nome:'Luz principal',   comodo:'Sala',   entity:'light.demo_sala',        demo:true, brilho:true },
+    { id:'luz_quarto', tipo:'luz', nome:'Luz principal',   comodo:'Quarto', entity:'light.demo_quarto',      demo:true, brilho:true },
+    { id:'luz_cozinha',tipo:'luz', nome:'Luz principal',   comodo:'Cozinha',entity:'light.demo_cozinha',     demo:true },
+    { id:'luz_esc',    tipo:'luz', nome:'Luz principal',   comodo:'Escritório', entity:'light.demo_escritorio', demo:true, brilho:true },
+    { id:'led_esc',    tipo:'luz', nome:'LEDs gamer',      comodo:'Escritório', entity:'light.demo_leds',    demo:true, brilho:true, rgb:true },
+    { id:'tv_esc',     tipo:'midia', nome:'TV',            comodo:'Escritório', entity:'media_player.demo_tv', demo:true },
+    { id:'xbox',       tipo:'midia', nome:'Xbox',          comodo:'Escritório', entity:'media_player.demo_xbox', demo:true,
+      nota:'Desligamento pelo método do console, nunca por corte de energia' },
+    { id:'tv_sala', tipo:'midia', nome:'TV', comodo:'Sala', entity:'media_player.demo_tv_sala', demo:true },
+    { id:'home_theater', tipo:'midia', nome:'Home theater', comodo:'Escritório', entity:'media_player.demo_home_theater', demo:true },
+    { id:'sensor_sala', tipo:'sensor', nome:'Temperatura e umidade', comodo:'Sala', entity:'sensor.demo_sala', demo:true, essencial:true },
+    { id:'sensor_quarto', tipo:'sensor', nome:'Temperatura e umidade', comodo:'Quarto', entity:'sensor.demo_quarto', demo:true, essencial:true },
+    { id:'sensor_esc', tipo:'sensor', nome:'Temperatura e umidade', comodo:'Escritório', entity:'sensor.demo_escritorio', demo:true, essencial:true },
+    { id:'portao',    tipo:'portao', nome:'Portão', comodo:'Garagem', entity:'cover.demo_portao', demo:true, essencial:true }
+  ],
+  comodos: ['Sala','Quarto','Cozinha','Escritório','Garagem'],
+  /* acoes: id -> 'ligar'|'desligar'. "alvo": desliga todos do tipo, ou 'tudo' (exceto essencial:true). */
+  cenas: {
+    cheguei:   { nome:'Cheguei em casa', acoes:{ luz_sala:'ligar', ar_sala:'ligar' } },
+    sai:       { nome:'Saí de casa', acoes:{ luz_sala:'desligar', luz_quarto:'desligar', luz_cozinha:'desligar', luz_esc:'desligar', led_esc:'desligar', ar_sala:'desligar', ar_quarto:'desligar', tv_esc:'desligar', tv_sala:'desligar', home_theater:'desligar' } },
+    boa_noite: { nome:'Boa noite', acoes:{ luz_sala:'desligar', luz_cozinha:'desligar', luz_esc:'desligar', led_esc:'desligar', tv_esc:'desligar', tv_sala:'desligar', ar_sala:'desligar', ar_quarto:'ligar' } },
+    bom_dia:   { nome:'Bom dia', acoes:{ luz_cozinha:'ligar', luz_sala:'ligar', ar_quarto:'desligar' } },
+    gamer:     { nome:'Modo gamer', acoes:{ led_esc:'ligar', luz_esc:'desligar', tv_esc:'ligar', xbox:'ligar', home_theater:'ligar' } },
+    normal:    { nome:'Modo normal', acoes:{ luz_esc:'ligar', led_esc:'desligar', tv_esc:'desligar', xbox:'desligar', home_theater:'desligar' } },
+    desligar_esc:   { nome:'Desligar escritório', acoes:{ luz_esc:'desligar', led_esc:'desligar', tv_esc:'desligar', xbox:'desligar', home_theater:'desligar' } },
+    desligar_luzes: { nome:'Desligar luzes', alvo:'luz' },
+    desligar_tudo:  { nome:'Desligar tudo', alvo:'tudo', confirmar:true, perigo:true }
+  },
+  cenasGerais: ['cheguei','sai','boa_noite','bom_dia','gamer','normal','desligar_luzes','desligar_tudo'],
+  cenasEscritorio: ['normal','gamer','desligar_esc']
+};
+
+/* Adaptador SIMULADO. Interface: estado(id), chamar(id, acao, dados), assinar(fn).
+   Na Etapa 2 será substituído por adaptadores/homeassistant.js com a mesma interface. */
+window.Adaptador = (function () {
+  var S = {}, L = [];
+  var inicial = { ar_sala:'unknown', luz_cozinha:'unavailable', tv_esc:'unknown' };
+  CASA.dispositivos.forEach(function (d) {
+    S[d.id] = { estado: d.tipo === 'sensor' ? 'on' : (inicial[d.id] || 'off'), attrs: { temp:23, modo:'frio', vent:'auto', brilho:80, cor:'#6c4cf1', temperatura: +(22 + Math.random() * 4).toFixed(1), umidade: Math.round(50 + Math.random() * 15) } };
+  });
+  function esperar(ms) { return new Promise(function (r) { setTimeout(r, ms); }); }
+  return {
+    modo: 'simulacao',
+    estado: function (id) { return S[id]; },
+    assinar: function (f) { L.push(f); },
+    chamar: function (id, acao, dados) {
+      var x = S[id];
+      return esperar(500 + Math.random() * 900).then(function () {
+        if (x.estado === 'unavailable') throw new Error('Dispositivo indisponível');
+        if (Math.random() < 0.06) throw new Error('Sem resposta do dispositivo (falha simulada)');
+        if (acao === 'ligar') x.estado = 'on';
+        else if (acao === 'desligar') x.estado = 'off';
+        else if (acao === 'ler') { var a = x.attrs; a.temperatura = +(a.temperatura + (Math.random() - .5) * 1.2).toFixed(1); a.umidade = Math.max(30, Math.min(80, Math.round(a.umidade + (Math.random() - .5) * 6))); }
+        else Object.assign(x.attrs, dados);
+        L.forEach(function (f) { f(); });
+      });
+    }
+  };
+})();
+
+/* Adaptador MQTT + seletor de modo. Envolve o simulador: window.Adaptador passa a escolher entre os dois. */
+(function () {
+  var SIM = window.Adaptador, C = CASA, L = [], conn = 'off', erro = '', cli = null, pend = {}, rot = {}, modo = 'simulacao', S = {}, formEl = null;
+  var CFG = { url: 'wss://w8767ca9.ala.us-east-1.emqxsl.com:8084/mqtt', user: '', topico: 'casa/painel', topicoEstado: '' };
+  try { Object.assign(CFG, JSON.parse(localStorage.getItem('painel-cfg') || '{}')); } catch (e) {}
+  C.dispositivos.forEach(function (d) { S[d.id] = { estado: 'unknown', attrs: { temp: 23, modo: 'frio', vent: 'auto', brilho: 80, cor: '#6c4cf1', temperatura: null, umidade: null } }; });
+  var ALFA = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789';
+  function codigo() { var b = new Uint8Array(8), s = ''; crypto.getRandomValues(b); for (var i = 0; i < 8; i++) s += ALFA[b[i] % ALFA.length]; return s.slice(0, 4) + '-' + s.slice(4); }
+  function avisar() { L.forEach(function (f) { f(); }); }
+  function dev(id) { return C.dispositivos.filter(function (d) { return d.id === id; })[0]; }
+  function tCmd() { return CFG.topico; }
+  function tSt() { return CFG.topicoEstado || CFG.topico; }
+  function resolver(cod) { var p = pend[cod]; if (!p) return; clearTimeout(p.t); delete pend[cod]; p.ok(); }
+
+  function interpretar(buf) {
+    var t = buf.toString().trim(), o = null; try { o = JSON.parse(t); } catch (e) {}
+    var j = o && typeof o === 'object' ? o : null, v = String(j ? (j.estado !== undefined ? j.estado : j.state) : t).toLowerCase(), e = null, a = {};
+    if (['ligado', 'on', '1', 'true'].indexOf(v) > -1) e = 'on';
+    else if (['desligado', 'off', '0', 'false'].indexOf(v) > -1) e = 'off';
+    else if (['indisponivel', 'indisponível', 'unavailable', 'offline'].indexOf(v) > -1) e = 'unavailable';
+    if (j) ['temp', 'modo', 'vent', 'brilho', 'cor', 'temperatura', 'umidade'].forEach(function (k) { if (j[k] !== undefined) a[k] = j[k]; });
+    return { estado: e, codigo: j && j.codigo, attrs: a, id: j && j.dispositivo, eco: !!(j && j.comando !== undefined) };
+  }
+  var M = {
+    estado: function (id) { return S[id]; },
+    chamar: function (id, acao, dados, cod) {
+      var d = dev(id);
+      return new Promise(function (ok, no) {
+        if (!cli || !cli.connected) return no(new Error('Sem conexão com o servidor MQTT'));
+        var msg = Object.assign({ dispositivo: id, comando: acao, codigo: cod, ts: new Date().toISOString() }, dados || {});
+        // QoS 1 e sem retain: um comando nunca é reenviado sozinho quando alguém reconecta
+        cli.publish(tCmd(d), JSON.stringify(msg), { qos: 1, retain: false }, function (err) {
+          if (err) return no(err);
+          var x = S[id];
+          if (acao === 'ligar') x.estado = 'on'; else if (acao === 'desligar') x.estado = 'off'; else Object.assign(x.attrs, dados || {});
+          ok();
+        });
+      });
+    }
+  };
+  function conectar(senha) {
+    if (cli) { try { cli.end(true); } catch (e) {} }
+    var url = CFG.url; if (/^wss?:\/\/[^\/:]+$/i.test(url)) url += ':8084/mqtt';
+    modo = 'mqtt'; conn = 'wait'; erro = ''; rot = {};
+    
+    cli = mqtt.connect(url, { username: CFG.user || undefined, password: senha || undefined, clientId: 'painel-casa-' + Math.random().toString(16).slice(2, 10), clean: true, connectTimeout: 8000, reconnectPeriod: 3000, protocolVersion: 4 });
+    cli.on('connect', function () { conn = 'on'; cli.subscribe(tSt(), { qos: 1 }); avisar(); });
+    cli.on('reconnect', function () { conn = 'wait'; avisar(); });
+    cli.on('offline', function () { conn = 'wait'; avisar(); });
+    cli.on('error', function (e) { conn = 'off'; erro = e.message; try { cli.end(true); } catch (x) {} avisar(); });
+    cli.on('message', function (topic, payload) {
+      
+      var r = interpretar(payload); if (!r.id || r.eco || !S[r.id]) return;
+      var id = r.id, x = S[id];
+      if (!r.estado && dev(id).tipo === 'sensor' && (r.attrs.temperatura !== undefined || r.attrs.umidade !== undefined)) r.estado = 'on';
+      if (r.estado) x.estado = r.estado;
+      Object.assign(x.attrs, r.attrs);
+      if (r.codigo && pend[r.codigo]) resolver(r.codigo);
+      else if (r.estado) Object.keys(pend).forEach(function (c) {
+        var p = pend[c]; if (p.id === id && ((p.acao === 'ligar' && r.estado === 'on') || (p.acao === 'desligar' && r.estado === 'off'))) resolver(c);
+      });
+      avisar();
+    });
+    avisar();
+  }
+  function desconectar() { if (cli) { try { cli.end(true); } catch (e) {} cli = null; } conn = 'off'; modo = 'simulacao'; avisar(); }
+  function atual() { return modo === 'mqtt' ? M : SIM; }
+
+  window.Adaptador = {
+    get modo() { return modo; },
+    rotulo: function () { return modo === 'mqtt' ? 'MQTT: ' + { on: 'conectado', wait: 'conectando…', off: 'desconectado' }[conn] : 'Simulação'; },
+    estado: function (id) { return atual().estado(id); },
+    assinar: function (f) { L.push(f); },
+    chamar: function (id, acao, dados) {
+      var c = codigo(), p = atual().chamar(id, acao, dados, c).then(function () { return c; });
+      p.codigo = c; return p;
+    }
+  };
+  SIM.assinar(avisar);
+
+  window.Conexao = { form: function () {
+    if (formEl) return formEl;
+    var f = document.createElement('form'), ins = {}; f.className = 'card cfg'; f.autocomplete = 'off';
+    [['url', 'Servidor MQTT (WebSocket seguro)', 'url'], ['user', 'Usuário', 'text'], ['senha', 'Senha (não é salva)', 'password'], ['topico', 'Tópico único (comandos e estados)', 'text'], ['topicoEstado', 'Tópico de estado separado (opcional)', 'text']].forEach(function (c) {
+      var l = document.createElement('label'), i = document.createElement('input'); l.textContent = c[1];
+      i.type = c[2]; i.value = CFG[c[0]] || ''; i.spellcheck = false; i.setAttribute('autocapitalize', 'none'); l.appendChild(i); f.appendChild(l); ins[c[0]] = i;
+    });
+    var info = document.createElement('p'); info.className = 'tag';
+    info.textContent = 'Todos os comandos vão neste tópico como {"dispositivo":"ar_sala","comando":"ligar","codigo":"K7M2-X9QD"}. Estados e leituras voltam no mesmo tópico (ou no de estado, se preenchido) como {"dispositivo":"ar_sala","estado":"ligado"} e {"dispositivo":"sensor_sala","temperatura":24.5,"umidade":58}. O comando "ler" pede uma leitura. Os ids estão no bloco de configuração dos dispositivos.';
+    var b = document.createElement('div'), bc = document.createElement('button'), bd = document.createElement('button'), s = document.createElement('div');
+    b.className = 'btns'; bc.className = 'b sec'; bc.textContent = 'Conectar'; bd.className = 'b off'; bd.type = 'button'; bd.textContent = 'Voltar à simulação'; s.className = 'msg';
+    b.appendChild(bc); b.appendChild(bd); f.appendChild(info); f.appendChild(b); f.appendChild(s);
+    f.onsubmit = function (e) {
+      e.preventDefault();
+      ['url', 'user', 'topico', 'topicoEstado'].forEach(function (k) { CFG[k] = ins[k].value.trim(); });
+      try { localStorage.setItem('painel-cfg', JSON.stringify(CFG)); } catch (x) {}
+      conectar(ins.senha.value);
+    };
+    bd.onclick = desconectar;
+    function mostrar() { s.textContent = window.Adaptador.rotulo() + (erro ? '. Erro: ' + erro : ''); s.dataset.k = erro ? 'bad' : (conn === 'on' ? 'ok' : ''); }
+    L.push(mostrar); mostrar();
+    return (formEl = f);
+  } };
+})();
+
+(function () {
+  var C = CASA, A = Adaptador;
+  var $ = function (s) { return document.querySelector(s); };
+  var TIT = { inicio:'Casa', ar:'Clima', luzes:'Luzes', escritorio:'Escritório', garagem:'Garagem', sistema:'Sistema' };
+  var TXT = { on:'Ligado', off:'Desligado', unavailable:'Indisponível', unknown:'Desconhecido' };
+  var vista = 'inicio', hist = [], pend = {}, msgs = {}, relat = null;
+  function nop() {}
+  function h(tag, cls, txt) { var e = document.createElement(tag); if (cls) e.className = cls; if (txt !== undefined) e.textContent = txt; return e; }
+  function dev(id) { return C.dispositivos.filter(function (d) { return d.id === id; })[0]; }
+  function st(id) { return A.estado(id).estado; }
+  function hh(d) { return d.toLocaleTimeString('pt-BR'); }
+  function log(txt, k) { hist.unshift({ t: new Date(), txt: txt, k: k || 'ok' }); if (hist.length > 80) hist.pop(); }
+
+  function enviar(id, acao, dados) {
+    var d = dev(id);
+    pend[id] = true; msgs[id] = { t: 'Enviando…', k: '' }; render();
+    var p = A.chamar(id, acao, dados);
+    if (p.codigo) { msgs[id].t = 'Enviando, código ' + p.codigo; render(); }
+    return p.then(function (cod) {
+      delete pend[id]; msgs[id] = { t: 'Comando enviado' + (cod ? ', código ' + cod : ''), k: 'ok' };
+      log(d.nome + ' (' + d.comodo + '): ' + acao + ', enviado' + (cod ? ' (código ' + cod + ')' : '')); render();
+    }).catch(function (e) {
+      delete pend[id]; msgs[id] = { t: e.message, k: 'bad' };
+      log(d.nome + ' (' + d.comodo + '): ' + acao + ' falhou, ' + e.message, 'bad'); render(); throw e;
+    });
+  }
+  function confirmar(txt) {
+    return new Promise(function (res) {
+      var dl = $('#dlg'); $('#dlgTxt').textContent = txt; dl.returnValue = '';
+      dl.onclose = function () { res(dl.returnValue === 'ok'); }; dl.showModal();
+    });
+  }
+  function cena(chave) {
+    var c = C.cenas[chave], acoes = c.acoes || {};
+    if (c.alvo) C.dispositivos.forEach(function (d) {
+      if (c.alvo === 'tudo' ? !d.essencial : d.tipo === c.alvo) acoes[d.id] = 'desligar';
+    });
+    var go = function () {
+      var ids = Object.keys(acoes);
+      log('Cena: ' + c.nome);
+      // Dispositivos independentes: comandos em paralelo, cada um aguarda a própria confirmação
+      Promise.all(ids.map(function (id) {
+        return enviar(id, acoes[id]).then(function () { return null; }, function (e) { return { d: dev(id), erro: e.message }; });
+      })).then(function (r) {
+        relat = { nome: c.nome, falhas: r.filter(Boolean) };
+        log('Cena "' + c.nome + '": ' + (relat.falhas.length ? relat.falhas.length + ' falharam' : 'tudo enviado'), relat.falhas.length ? 'bad' : 'ok');
+        render();
+      });
+    };
+    if (c.confirmar) confirmar('Desligar tudo? Equipamentos essenciais e o portão não serão afetados.').then(function (ok) { if (ok) go(); });
+    else go();
+  }
+
+  function fmt(v, u) { return v == null ? '—' : String(v).replace('.', ',') + u; }
+  function media(k) {
+    var v = C.dispositivos.filter(function (d) { return d.tipo === 'sensor' && A.estado(d.id).attrs[k] != null; }).map(function (d) { return Number(A.estado(d.id).attrs[k]); });
+    return v.length ? +(v.reduce(function (a, b) { return a + b; }, 0) / v.length).toFixed(1) : null;
+  }
+  function resumoClima() {
+    var g = h('div', 'stats');
+    [['Temperatura média', 'temperatura', ' °C'], ['Umidade média', 'umidade', ' %']].forEach(function (x) {
+      var e = h('div', 'stat'); e.appendChild(h('b', '', fmt(media(x[1]), x[2]))); e.appendChild(h('span', '', x[0])); g.appendChild(e);
+    });
+    return g;
+  }
+  function cartaoSensor(d) {
+    var s = st(d.id), a = A.estado(d.id).attrs, c = h('article', 'card'), top = h('div', 'top'), nm = h('div', 'nm');
+    nm.appendChild(h('strong', '', d.nome)); nm.appendChild(h('small', '', d.comodo)); top.appendChild(led(s)); top.appendChild(nm); c.appendChild(top);
+    var v = h('div', 'leit'), t = h('div'), u = h('div');
+    t.appendChild(h('small', '', 'Temperatura')); t.appendChild(h('b', '', fmt(a.temperatura, ' °C')));
+    u.appendChild(h('small', '', 'Umidade')); u.appendChild(h('b', '', fmt(a.umidade, ' %')));
+    v.appendChild(t); v.appendChild(u); c.appendChild(v);
+    var b = h('button', 'b sec', 'ATUALIZAR LEITURA'); b.disabled = s === 'unavailable' || !!pend[d.id]; b.onclick = function () { enviar(d.id, 'ler').catch(nop); }; c.appendChild(b);
+    var m = msgs[d.id], ms = h('div', 'msg', m ? m.t : ''); ms.dataset.k = m ? m.k : ''; c.appendChild(ms); return c;
+  }
+  function acionarPortao(d) {
+    return confirmar('Acionar o portão da garagem?').then(function (ok) { if (ok) return enviar(d.id, 'acionar'); });
+  }
+  function cartaoPortao(d) {
+    var c = h('article', 'card'), nm = h('div', 'nm'); nm.appendChild(h('strong', '', d.nome)); nm.appendChild(h('small', '', d.comodo)); c.appendChild(nm);
+    var b = h('button', 'b sec', 'ACIONAR PORTÃO'); b.disabled = !!pend[d.id]; b.onclick = function () { acionarPortao(d).catch(nop); }; c.appendChild(b);
+    var m = msgs[d.id], ms = h('div', 'msg', m ? m.t : 'Cada acionamento gera um código de comando.'); ms.dataset.k = m ? m.k : ''; c.appendChild(ms); return c;
+  }
+  function led(s) { var l = h('span', 'led'); l.dataset.s = s; l.title = TXT[s]; return l; }
+  function sel(rot, ops, val, dis, cb) {
+    var w = h('label', 'ctl'); w.appendChild(h('span', '', rot));
+    var s = h('select'); ops.forEach(function (o) { var p = h('option', '', o[1]); p.value = o[0]; if (o[0] === val) p.selected = true; s.appendChild(p); });
+    s.disabled = dis; s.onchange = function () { cb(s.value); }; w.appendChild(s); return w;
+  }
+  function cartao(d) {
+    if (d.tipo === 'portao') return cartaoPortao(d);
+    if (d.tipo === 'sensor') return cartaoSensor(d);
+    var s = st(d.id), a = A.estado(d.id).attrs, c = h('article', 'card'), top = h('div', 'top');
+    var nm = h('div', 'nm'); nm.appendChild(h('strong', '', d.nome)); nm.appendChild(h('small', '', d.comodo));
+    var tx = h('span', 'st', TXT[s]); tx.dataset.s = s;
+    top.appendChild(led(s)); top.appendChild(nm); top.appendChild(tx); c.appendChild(top);
+    if (d.presumido) c.appendChild(h('div', 'tag', 'Estado presumido: o infravermelho não informa o estado real'));
+    if (d.nota) c.appendChild(h('div', 'tag', d.nota));
+    var lb = d.tipo === 'luz' ? ['ACENDER', 'APAGAR'] : ['LIGAR', 'DESLIGAR'], r = h('div', 'btns'), bloq = s === 'unavailable' || pend[d.id];
+    [['ligar', lb[0], 'on'], ['desligar', lb[1], 'off']].forEach(function (x) {
+      var b = h('button', 'b ' + x[2], x[1]); b.disabled = bloq; b.onclick = function () { enviar(d.id, x[0]).catch(nop); }; r.appendChild(b);
+    });
+    c.appendChild(r);
+    var lig = s === 'on' && !pend[d.id];
+    if (d.tipo === 'ar') {
+      var t = h('div', 'ctl'); t.appendChild(h('span', '', 'Temperatura'));
+      var tp = h('div', 'temp'), m = h('button', 'b sec', '−'), p = h('button', 'b sec', '+');
+      m.disabled = p.disabled = !lig; m.setAttribute('aria-label', 'Diminuir temperatura'); p.setAttribute('aria-label', 'Aumentar temperatura');
+      m.onclick = function () { if (a.temp > 16) enviar(d.id, 'ajustar', { temp: a.temp - 1 }).catch(nop); };
+      p.onclick = function () { if (a.temp < 30) enviar(d.id, 'ajustar', { temp: a.temp + 1 }).catch(nop); };
+      tp.appendChild(m); tp.appendChild(h('span', '', a.temp + ' °C')); tp.appendChild(p); t.appendChild(tp); c.appendChild(t);
+      c.appendChild(sel('Modo', [['auto','Automático'],['frio','Frio'],['quente','Quente'],['ventilacao','Ventilação'],['seco','Desumidificação']], a.modo, !lig, function (v) { enviar(d.id, 'ajustar', { modo: v }).catch(nop); }));
+      c.appendChild(sel('Ventilador', [['auto','Automático'],['baixa','Baixa'],['media','Média'],['alta','Alta']], a.vent, !lig, function (v) { enviar(d.id, 'ajustar', { vent: v }).catch(nop); }));
+    }
+    if (d.brilho) {
+      var w = h('label', 'ctl'); w.appendChild(h('span', '', 'Brilho'));
+      var i = h('input'); i.type = 'range'; i.min = 1; i.max = 100; i.value = a.brilho; i.disabled = !lig;
+      i.onchange = function () { enviar(d.id, 'ajustar', { brilho: +i.value }).catch(nop); }; w.appendChild(i); c.appendChild(w);
+    }
+    if (d.rgb) {
+      var k = h('label', 'ctl'); k.appendChild(h('span', '', 'Cor'));
+      var ci = h('input'); ci.type = 'color'; ci.value = a.cor; ci.disabled = !lig;
+      ci.onchange = function () { enviar(d.id, 'ajustar', { cor: ci.value }).catch(nop); }; k.appendChild(ci); c.appendChild(k);
+    }
+    var mg = msgs[d.id]; var ms = h('div', 'msg', mg ? mg.t : (s === 'unavailable' ? 'Dispositivo indisponível. Comandos bloqueados.' : '')); ms.dataset.k = mg ? mg.k : ''; c.appendChild(ms);
+    return c;
+  }
+  function botoesCena(chaves) {
+    var g = h('div', 'cenas');
+    chaves.forEach(function (k) { var b = h('button', 'b' + (C.cenas[k].perigo ? ' perigo' : ''), C.cenas[k].nome); b.onclick = function () { cena(k); }; g.appendChild(b); });
+    return g;
+  }
+  function blocoRelat() {
+    if (!relat) return null;
+    var b = h('div', 'aviso');
+    b.appendChild(h('strong', '', 'Última cena: ' + relat.nome));
+    if (!relat.falhas.length) { b.appendChild(h('div', '', 'Todos os comandos foram enviados.')); return b; }
+    b.appendChild(h('div', '', 'Falharam ao enviar:'));
+    relat.falhas.forEach(function (f) { b.appendChild(h('div', '', f.d.nome + ' (' + f.d.comodo + '): ' + f.erro)); });
+    return b;
+  }
+  function secao(tit, el) { var s = h('section'); s.appendChild(h('h2', '', tit)); s.appendChild(el); return s; }
+  function grade(lista) { var g = h('div', 'grid'); lista.forEach(function (d) { g.appendChild(cartao(d)); }); return g; }
+  function lista(arr, fn) { var u = h('ul', 'hist'); arr.forEach(function (x) { u.appendChild(fn(x)); }); return u; }
+  function linhaHist(x) { var li = h('li'); li.dataset.k = x.k; li.appendChild(h('time', '', hh(x.t))); li.appendChild(h('span', '', x.txt)); return li; }
+
+  function vInicio(m) {
+    var cont = { on: 0, off: 0, unavailable: 0, unknown: 0 };
+    C.dispositivos.forEach(function (d) { if (d.tipo !== 'portao' && d.tipo !== 'sensor') cont[st(d.id)]++; });
+    var es = h('div', 'stats');
+    ['on', 'off', 'unavailable', 'unknown'].forEach(function (s) {
+      var x = h('div', 'stat'); x.appendChild(led(s)); x.appendChild(h('b', '', String(cont[s]))); x.appendChild(h('span', '', TXT[s])); es.appendChild(x);
+    });
+    m.appendChild(es); m.appendChild(resumoClima());
+    var r = blocoRelat(); if (r) m.appendChild(r);
+    m.appendChild(secao('Cenas', botoesCena(C.cenasGerais)));
+    var g = h('div', 'grid');
+    C.comodos.forEach(function (c) {
+      var card = h('div', 'card'); card.appendChild(h('strong', '', c));
+      C.dispositivos.filter(function (d) { return d.comodo === c; }).forEach(function (d) {
+        var s = st(d.id), row = h('div', 'row'); if (d.tipo !== 'portao') row.appendChild(led(s)); row.appendChild(h('span', 'n', d.nome)); row.appendChild(h('span', 'tag', d.tipo === 'portao' ? '' : d.tipo === 'sensor' ? fmt(A.estado(d.id).attrs.temperatura, ' °C') + ', ' + fmt(A.estado(d.id).attrs.umidade, ' %') : TXT[s]));
+        var lig = s === 'on', pt = d.tipo === 'portao', b = h('button', 'b ' + (pt ? 'sec' : lig ? 'off' : 'on'), pt ? 'Acionar' : lig ? 'Desligar' : 'Ligar');
+        b.disabled = s === 'unavailable' || pend[d.id]; b.onclick = function () { (pt ? acionarPortao(d) : enviar(d.id, lig ? 'desligar' : 'ligar')).catch(nop); };
+        if (d.tipo !== 'sensor') row.appendChild(b); card.appendChild(row);
+      });
+      g.appendChild(card);
+    });
+    m.appendChild(secao('Por cômodo', g));
+    var ind = C.dispositivos.filter(function (d) { return st(d.id) === 'unavailable'; });
+    if (ind.length) { var av = h('div', 'aviso'); av.appendChild(h('strong', '', 'Dispositivos indisponíveis: ')); av.appendChild(document.createTextNode(ind.map(function (d) { return d.nome + ' (' + d.comodo + ')'; }).join(', '))); m.appendChild(av); }
+    m.appendChild(secao('Últimos comandos', hist.length ? lista(hist.slice(0, 5), linhaHist) : h('p', 'tag', 'Nenhum comando enviado ainda.')));
+  }
+  function render() {
+    var m = $('#main'); m.innerHTML = '';
+    $('#tit').textContent = TIT[vista];
+    document.querySelectorAll('nav button').forEach(function (b) { if (b.dataset.v === vista) b.setAttribute('aria-current', 'page'); else b.removeAttribute('aria-current'); });
+    if (vista === 'inicio') vInicio(m);
+    else if (vista === 'ar') {
+      var sens = C.dispositivos.filter(function (d) { return d.tipo === 'sensor'; });
+      var bl = h('button', 'b sec', 'ATUALIZAR LEITURAS'); bl.onclick = function () { sens.forEach(function (d) { enviar(d.id, 'ler').catch(nop); }); };
+      m.appendChild(bl); m.appendChild(secao('Temperatura e umidade', grade(sens)));
+      m.appendChild(secao('Ar-condicionado', grade(C.dispositivos.filter(function (d) { return d.tipo === 'ar'; }))));
+    }
+    else if (vista === 'luzes') C.comodos.forEach(function (c) {
+      var l = C.dispositivos.filter(function (d) { return d.tipo === 'luz' && d.comodo === c; });
+      if (l.length) m.appendChild(secao(c, grade(l)));
+    });
+    else if (vista === 'escritorio') {
+      m.appendChild(botoesCena(C.cenasEscritorio));
+      var r = blocoRelat(); if (r) m.appendChild(r);
+      m.appendChild(grade(C.dispositivos.filter(function (d) { return d.comodo === 'Escritório'; })));
+    } else if (vista === 'garagem') m.appendChild(grade(C.dispositivos.filter(function (d) { return d.tipo === 'portao'; })));
+    else { m.appendChild(secao('Conexão', Conexao.form())); m.appendChild(secao('Histórico', hist.length ? lista(hist, linhaHist) : h('p', 'tag', 'Nenhum comando enviado ainda.'))); }
+  }
+
+  document.querySelectorAll('nav button').forEach(function (b) { b.onclick = function () { vista = b.dataset.v; render(); }; });
+  var tema = matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+  document.documentElement.dataset.tema = tema;
+  $('#tema').onclick = function () { tema = tema === 'dark' ? 'light' : 'dark'; document.documentElement.dataset.tema = tema; };
+  function atualizarModo() { var sim = A.modo === 'simulacao'; $('#banner').hidden = !sim; $('#conn').textContent = A.rotulo(); }
+  atualizarModo(); A.assinar(atualizarModo);
+  
+  function relogio() { var d = new Date(); $('#relogio').textContent = d.toLocaleDateString('pt-BR', { weekday:'short', day:'2-digit', month:'short' }) + ', ' + d.toLocaleTimeString('pt-BR', { hour:'2-digit', minute:'2-digit' }); }
+  relogio(); setInterval(relogio, 15000);
+  A.assinar(render);
+  render();
+})();
+
+</script>
+</body>
+</html>
